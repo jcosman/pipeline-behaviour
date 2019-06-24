@@ -1,0 +1,180 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\hypersetup{
+    colorlinks,
+    linkcolor={blue},
+    citecolor={blue},
+    urlcolor={blue}
+}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+
+\title{\vspace{-2em}Bid behaviour and interactions with the pipeline (version 2)\footnote{Everything in this document is incredibly preliminary and subject to massive changes. Thank you so much for taking the time to read this! I am especially grateful to Clara for her insights on developing a model that reasonably captures the pipeline process and to Nick for his thoughtful feedback on the previous draft.}}
+\author{Jacob Cosman }
+\date{\today}
+
+\setlength{\tabcolsep}{12pt}
+
+\begin{document}
+
+\maketitle
+\onehalfspacing
+\paragraph{Introduction}
+
+This document describes an approach to modelling users' bidding and acceptance decisions to loads. It creates a mapping between a set of measurable parameters and distributions on one hand and predictions regarding users' response to posted loads and the price pipeline on the other hand. This model is useful for the following purposes:
+\begin{itemize}
+    \item Real-time predictions of time to match and probability of successful match.
+    \item Development of an algorithm to dynamically update the pipeline with greater automation.
+    \item An improved understanding of the marginal benefit of an additional app user on load match rate and margins.
+    \item An improved long-run understanding of the impact of changing outside opportunities on carrier behaviour.
+    \item More fully informed real-time load acceptance decisions.
+\end{itemize}
+This document outlines a comprehensive and tractable framework for modelling bid and load acceptance behaviour and describes the process for inferring structural parameter values from the data. However, it does not actually provide estimates for parameter values.
+
+\paragraph{Why this matters}
+Understanding users' bid behaviour and its relationship to the price pipeline offers several potential benefits to Convoy:
+\begin{enumerate}
+    \item Higher and more consistent revenue to Convoy by ensuring loads are matched with carriers at the lowest possible cost point.
+    \item Marginal cost savings from fewer broker interactions per load by decreasing the probability of high-effort attempts to secure a carrier.
+    \item A more positive user experience by ensuring loads more consistently match through a predictable in-app process.
+\end{enumerate}
+Improving the response to app users' bidding and load acceptance behaviour (optimally in a way that effectively addresses unmatched loads with low remaining time) could have substantial impacts on Convoy's margins.
+
+\paragraph{Overview of theoretical model}
+This theoretical model tries to capture the environment and decision set of a carrier using the Convoy app. Accordingly, it excludes information that Convoy knows (e.g. the planned pipeline escalation, the number of other bidders, and the length of time the offer has been online) and includes information that Convoy does not know (e.g. the cost to a carrier of fulfilling a specific load and the time-varying availability of outside opportunities). The model represents the unknown information in a very abstract way although in the future Convoy might have a better sense of carrier- and time-specific costs and outside opportunities.
+
+The model follows \cite{Arcidiacono2016} and other empirical industrial organization literature by situating all decisions in the model environment in continuous rather than discrete time. Rather than all information and decisions happening in discrete chunks of time $t$, $t+1$, and so on, time is a continuous variable and new information or opportunities to make decisions arrive according to Poisson processes. This requires some additional notation but generates several advantages:
+\begin{itemize}
+    \item Thorough use of available high-frequency information, especially app telemetry data.
+    \item A realistic approximation to actual users' experience intermittently checking the app.
+    \item Lower computational intensity (because the probability of two exactly simultaneous events in continuous time is zero). 
+\end{itemize}
+
+As with any economic model this approach includes some abstractions from the real world. Some user decisions (e.g. strategically bidding on multiple loads) lie outside the model and some optimal economic behaviour (e.g. fully rational inference of competitive intensity) is not computationally feasible (and arguably not realistic). However, overall the model should provide a reasonable framework for modelling bid behaviour and load acceptance.
+
+\paragraph{A stylized model of a shipment attempt}
+In this model the unit of observation is a single shipment attempt. A focal app user is making bid and acceptance decisions taking into account Convoy's behaviour (which the user regards as stochastic but not rational) and other app users (which the user regards as rational). That is, the focal user's actions represent the best response to the actions of other users and those other users' actions represent the best response to the actions of the focal user. 
+
+The state of the shipment attempt is captured by two variables. The first is the current outstanding offer posted by Convoy in the app (denoted by $b$). This value is generated by the pipeline and increases over time. The second is the current level of effort exerted by the broker (denoted by $e$). The effort level ranges from fully automated to additional broker attention to increase the bid to posting on load boards to directly contacting carriers. It corresponds closely to the present level of urgency associated with the shipment attempt. These variables are assumed to be mutual common knowledge. The bid is very clearly visible and presumably users will notice if e.g. the load is posted on load boards (although this latter assumption may be way less justified).
+
+As mentioned previously, the model regards all events as occurring in continuous time. Changes to $b$ and $e$ as well as actions by the model participants arrive according to Poisson processes. The following table describes the events that can occur during a shipment attempt:
+
+\begin{table}[htp]
+\centering
+\begin{tabular}{lcl}
+\hline
+\textbf{Event}                 & \textbf{Rate}                    & \textbf{Description of change}                  \\
+\hline
+\textbf{Offer update}           & $\eta\left(e\right)$    & Offer increases by amount drawn from $G$ \\
+\textbf{Broker effort increase} & $\theta\left(e\right)$  & Broker effort $e$ increments           \\
+\textbf{Order cancellation }     & $\delta\left(e\right)$  & Load removed from Convoy app           \\
+\textbf{Bid consideration }     & $\alpha\left(e\right)$  & Convoy considers currently submitted bids           \\
+\textbf{Bid opportunity }      & $\lambda\left(e\right)$ & User has opportunity to submit bid     \\
+\textbf{Outside opportunity}   & $\phi$                  & Outside opportunity drawn from $F$    
+\end{tabular}
+\end{table}
+
+\paragraph{Convoy's behaviour}
+In this model Convoy behaves stochastically. Its behaviour is a series of random processes which do not respond strategically to the app users' behaviour. This is arguably a reasonable approximation for the following reasons:
+\begin{itemize}
+    \item Convoy's decision process is not visible and its decisions are effectively random from the perspective of the app user. 
+    \item Convoy does not currently respond to users' app behaviour in a strategically optimal way but instead uses a series of heuristics.
+    \item It allows for the estimation of the distribution of Convoy's actions at high precision using the large available data set.
+\end{itemize}
+Convoy increases its match effort level from $e$ to $e+1$ at rate $\theta\left(r\right)$, raises its offer from $b$ to $\Delta b$ at rate $\eta\left(e\right)$ (where $\Delta b$ itself is drawn from distribution $G\left(\cdot, e\right)$), and cancels the order entirely at rate $\delta\left(e\right)$. All of these processes depend on the current broker effort level $e$ but not directly on the behaviour of the users. The users regard all three events as occurring at stochastic intervals that depend only on the current visible level of broker effort. 
+
+In the model (as in reality) users can either accept Convoy's current offer or they can submit a bid $B$. If a user accepts Convoy's current offer $b$ then they are assigned the load immediately. If a user submits a bid $B$ then the bid is placed in a ``holding tank'' for Convoy to consider. Convoy considers the current holding tank of bids at rate $\alpha\left(e\right)$. If $m$ users have currently submitted bids, Convoy will award the load to the focal user's bid $B$ with probability $\pi\left(B; b, e; q; m\right)$. This bid allocation function will be determined by the data but it likely has the following attributes:
+\begin{itemize}
+    \item Zero for $B << b$
+    \item Increasing in $B$ towards one for $B = b$
+    \item Increasing in user's quality type $q$
+\end{itemize}
+To clarify, when a user submits a new bid $B'$ it supersedes the same user's previous bid $B$ in the holding tank.
+
+\paragraph{The user's problem}
+Each app user comes into the model with a quality level $q$ that reflects Convoy's previous experience with the user. The user also has prior beliefs about the number of other users competing for the same load and beliefs about the strategy of other users (both discussed in further detail below). At any time the user also observes the current offer from Convoy $b$ as well as the current level of effort expended by Convoy $e$. Conditional on all of this the focal app user wants to find a bidding strategy $B\left(b,e;c,q\right)$ that maximizes the expected profit associated with this load. When determining its expected profit the user discounts the future at rate $\beta\left(q\right)$. (Throughout this document the user's non-opportunity cost of fulfilling the load is normalized to zero. Adding a fixed cost does not change the model or its predictions.) The future discount depends on the user type $q$ because it may be the case that underlying differences in ability to wait may be driving Convoy's assignment of quality types.
+
+\paragraph{Other users and equilibrium}
+The focal user formulates their strategy in response to their beliefs about the strategies of other users interested in the same load. The focal user assumes that every other user of type $\tilde{q}$ considering the same load is operating according to the bidding strategy $\tilde{B}\left(b,e,\tilde{q}\right)$ with respect to Convoy's current offer $b$ and current broker level $e$. When modelling this process we will impose the constraint that everyone's strategy is the best response to everyone else's strategy. This is almost a weak perfect Bayesian equilibrium. However, it departs somewhat from the formal definition because users do not have fully rationally informed expectations at every moment about the number of competitors.
+
+\paragraph{Number of competitors}
+The focal user in this model does not know how many other users are contemplating bids on the same load. (Convoy, on the other hand, does know exactly how many users are interested --- and can use this information to fine-tune the offer pipeline.) Instead, the user will use the available information to form beliefs about the number of competitors $n_q$ of each quality type $q$ it is facing. (For notational convenience let $n$ denote the vector of values for $n_q$ over all possible values of $q$. In a fully rational and fully informed model the focal user would update beliefs about both the number of other users and the distribution of their quality levels in real time taking into account the expected arrival rate of competitors. However, because this is nether computationally feasible nor a realistic reflection of how users interact with the app, users will have a heuristic that infers the number of competitors based on the probability that no one else has accepted the load yet.
+
+Let $\bar{\rho}\left(n\right)$ be the user's prior beliefs that $n_q$ users of quality type $q$ are competing for the same load. (For example, these could be the long-run average number of users considering a similar load.) Then, the user will form expectations regarding the number of competitors for this load $\bar{\rho}\left(n\right)$ as follows:
+
+\begin{equation*}
+    \rho\left(n\right) = \frac{ \prod_{\tilde{q}} \left(1-\pi\left(\tilde{B}\left(b,e,\tilde{q}\right); b, e; \tilde{q}; \sum_{\tilde{q}'} n_{\tilde{q}'} \right)\right)^{n_{\tilde{q}}}  \bar{\rho}\left(n\right)}{\sum_{n'} \prod_{\tilde{q}} \left(1-\pi\left(\tilde{B}\left(b,e,\tilde{q}\right); b, e; \tilde{q}; \sum_{\tilde{q}'} n'_{\tilde{q}'} \right)\right)^{n'_{\tilde{q}}} \bar{\rho}\left(n'\right)}
+\end{equation*}
+
+Intuitively, if the offer $b$ is low and the effort level $e$ is low and everyone else's prospective bid $\tilde{B}\left(b,e,\tilde{q}\right)$ is very far from acceptance at Convoy then the relatively uninformative initial beliefs $\bar{\rho}$ dominate. However, as $b$ and $e$ rise, a load that is still unfulfilled increases the focal user's weight on the possibility that few or no other users are interested in this load. While this approach does not strictly use all available information as in a fully rational agent model it does capture the correct dynamics.
+
+\paragraph{Value function formulation}
+Combining all of this generates a function that expresses the value of an offer from the point of view of a user who currently faces an opportunity to bid. This is a relatively complex expression so I will first write out the entire value function and then discuss its components one at a time. The value function $V_o$ for a user currently facing the opportunity to bid is as follows:
+\begin{align*}
+    V_o\left(b,e;q;B\right) = \max \left\{b, \max_{B'} \left\{V_w\left(b,e;q;B'\right)\right\} -k, V_w\left(b,e;q;B\right) \right\}
+\end{align*}
+The user at this point faces three options: they can accept Convoy's current offer and immediately win the load with payoff $b$, they can submit an alternate bid $B'$, or they can wait until the next opportunity. (Updating the bid incurs a very small cost $k$ --- this is in the model essentially to prevent the user from repeatedly updating $B$ even when the bid is way out of the range Convoy would accept.) The value function $V_w$ for a user in between opportunities to bid is as follows:
+\begin{align*}
+V_w\left(b,e;q;B\right) = & \underbrace{\left[\beta\left(q\right) + \eta\left(e\right) + \theta\left(e\right) + \delta\left(e\right) + \phi + \lambda + \alpha\left(e\right) \sum_n \rho_n  \Omega\left(n\right) \right]^{-1}}_{\text{Discount factor}} \times \\
+   & \left[ \underbrace{\eta\left(e\right) \int_{0}^{\infty} V_w\left(b+\Delta b,e;q;B\right) \mathrm{d}G\left(\Delta b, e\right)}_{\text{Convoy increases its offer}} + \right. \\ & \underbrace{\theta\left(e\right) V_w\left(b,e+1;q;B\right)}_{\text{Convoy increases its effort}}  + \\
+   & \underbrace{\phi \mathbb{E}\left[ \max \left\{v,V_w\left(b,e;q;B\right)\right\} \right]}_{\text{Outside opportunity arises}}  + \\
+    &  \underbrace{\lambda V_o\left(b,e;q;B\right)}_{\text{Next bid opportunity}} + \\
+    & \left. \underbrace{\alpha\left(e\right) \sum_n \rho_n  \pi\left(B; b, e; q; \sum_{\tilde{q}} n_{\tilde{q}}\right) B }_{\text{Convoy assesses bids in holding tank}} \right] 
+\end{align*}
+
+\subparagraph{Discount factor}
+Strictly speaking this term isn't a discount factor but it does reflect how quickly the state evolves away from the current state. It includes the rates for new Convoy offers, higher broker effort, removal of the load from the app, a new move opportunity for the focal user, and a successful bid by a user other than the focal user. The higher these terms are, the lower the value of waiting in any given state. For example, if the rate of removal events $\delta\left(e\right)$ is very high, then the value of waiting $V_w\left(b,e;c,q\right)$ will be very low, and the user will be less willing to wait if an appealing outside option arises. The variation in $\beta$ by quality type gives rise to variation in willingness to wait for a better offer from Convoy (as opposed to accepting the current offer or accepting an outside option.) The term $\Omega\left(n\right)$ denotes the probability that some other user won the load conditional on $n$:
+\begin{equation*}
+    \Omega\left(n\right) = 1 - \prod_{\tilde{q}} \left(1-\pi\left(\tilde{B}\left(b,e,\tilde{q}\right); b, e; \tilde{q}; \sum_{\tilde{q}'} n_{\tilde{q}'} \right)\right)^{n_{\tilde{q}}}
+\end{equation*}
+
+\subparagraph{Convoy increases its offer}
+The state shifts from $V_w\left(b,e;q;B\right)$ to $V_w\left(b+\Delta b,e;q;B\right)$ where the increase in Convoy's offer $\Delta b$ is drawn from cumulative distribution function $G\left(\cdot, e\right)$.
+
+\subparagraph{Convoy increases its effort}
+The state shifts from $V_w\left(b,e;q;B\right)$ to $V_w\left(b,e+1;q;B\right)$.
+
+\subparagraph{Outside opportunity arises}
+An outside offer arises with value $v$ drawn from cumulative distribution function $F$. If $v > V_w\left(b,e;c,q\right)$ the user accepts the opportunity and stops competing for this load. If $v \leq V_w\left(b,e;c,q\right)$ the user dismisses the outside opportunity and continues to focus on this load.
+
+\subparagraph{Next bid opportunity}
+If the next Poisson process to fire is the focal user's move opportunity then the focal user is presented with the move opportunity problem with value function $V_o\left(b,e;q;B\right)$ outlined above.
+
+\subparagraph{Convoy assesses bids in holding tank}
+With probability $\sum_n \rho_n  \pi\left(B; b, e; q; \sum_{\tilde{q}} n_{\tilde{q}}\right)$ Convoy awards the load to the focal user who gets revenue $B$.
+
+\paragraph{Mapping this to the data}
+This theoretical model describes app users' behaviour as a function of underlying primitive parameters and distributions. It remains to actually measure these. The underlying primitives based on Convoy data are relatively straightforward to capture whereas the primitives based on user behaviour require structural econometric modelling techniques. Strictly speaking, we could roll absolutely everything into one structural econometric model and estimate the parameters that way. However, that approach would be much more computationally intensive and reducing the dimensionality of the structural estimation will generate more precise estimates.
+
+All of the following parameters can be estimated nonparametrically from internal Convoy data: the offer update rate $\eta\left(e\right)$ and offer update size distribution $G$, the escalation of broker effort $\theta\left(e\right)$, the rate at which Convoy cancels offers $\delta\left(e\right)$, the bid opportunity arrival rate $\lambda\left(e\right)$, the rate at which Convoy determines which bid to accept $\alpha\left(e\right)$, and the bid acceptance function $ \pi\left(B; b, e; q; m \right)$. Given the depth of available data it should be feasible to estimate all of these as time-adjusted lane-specific averages. These rates depend on the current level of broker effort $e$ as well as the Convoy's level of user quality $q$ so both of these would need to be discretized. For tractability it is probably optimal to restrict these to a few values. The following table describes possible levels for $e$ and $q$ which would be observable in the data: 
+\begin{table}[htp]
+\centering
+\begin{tabular}{cl@{\hskip 36pt}cl}
+\hline
+\multicolumn{2}{c}{$e$}   &                           \multicolumn{2}{c}{$q$}                    \\
+\hline
+\textbf{Level} & \textbf{Interpretation}             & \textbf{Level} & \textbf{Interpretation}    \\
+\hline
+\textbf{0}     & Automatic pipeline         & \textbf{0}     & High falloff user \\
+\textbf{1}     & Manual pipeline adjustment & \textbf{1}     & Ordinary user     \\
+\textbf{2}     & Posting on load boards     & \textbf{2}     & User with QAU     \\
+\textbf{3}     & Calls to carriers          & \textbf{3}     & Elite user       
+\end{tabular}
+\end{table}
+
+For the user's prior beliefs regarding the number of competitors $\bar{\rho}\left(n\right)$ we can reasonably use a time-adjusted average of the number of users looking at similar offers on the same lane (minus one because we are looking for competitors to the focal user). Realistically, for many lane/time combinations, this will be very close to zero. In situations where the number of users is higher it may be necessary to develop more refined beliefs. 
+
+The remaining attributes (the arrival rate $\phi$ and distribution $F$ for outside opportunities as well as the discount parameter $\beta$ are not visible in the Convoy data.  To estimate these parameters we will need to take the structural model literally and find underlying parameter values which most closely rationalize the observed behaviour as a weak perfect Bayesian equilibrium (with the limited-information beliefs described above). Given the persistent unobserved heterogeneity in the user cost $c$ it is probably optimal to use a nested pseudo likelihood statistical model following \cite{Aguirregabiria2007}. They describe an estimation scheme that recovers structural parameter values while directly enforcing the constraint that all users' behaviour is a best response to other users on the platform. These parameters could potentially depend on outside information --- for example, the distribution of $v$ could depend on measures of aggregate regional freight volume as well as the number of offers available on Convoy.
+
+\paragraph{Next steps}
+The next step for this process is refining the model as much as possible to accurately reflect reality and building parameterizations for the relevant distribution functions. After that, it should be possible to actually estimate this model and validate its behaviour compared to actual observed bid data. If the model provides a reasonable approximation to reality then this will provide an opportunity to predict new pipeline and offer algorithms that could proceed to A/B testing.
+\bibliographystyle{aer}
+\bibliography{bid_pipeline.bib}
+
+\end{document}
